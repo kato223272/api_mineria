@@ -46,7 +46,8 @@ async def editar_enfermedad(data: EdicionEnfermedadInput):
 
     if data.nueva_urgencia: enf.nivel_urgencia = data.nueva_urgencia
     if data.nueva_recomendacion: enf.recomendacion_publica = data.nueva_recomendacion
-
+    if data.nuevos_sintomas_clave is not None: 
+        enf.sintomas_clave = data.nuevos_sintomas_clave
     await enf.save()
     await kb_engine.cargar_conocimiento()
     return {"msg": "Datos de la enfermedad actualizados."}
