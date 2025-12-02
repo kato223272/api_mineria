@@ -2,18 +2,21 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from src.domain.models import EnfermedadDocument, Sintoma
 from src.mining.engine import kb_engine
+from src.domain.models import EnfermedadDocument, Sintoma
 
 router = APIRouter(prefix="/admin", tags=["Administración Total"])
-# GESTIÓN DE ENFERMEDADES (CRUD)
 # CREAR ENFERMEDAD
 @router.post("/enfermedad")
 async def crear_enfermedad(enfermedad: EnfermedadDocument):
     existe = await EnfermedadDocument.find_one(EnfermedadDocument.nombre == enfermedad.nombre)
     if existe: raise HTTPException(400, f"La enfermedad '{enfermedad.nombre}' ya existe.")
     
+    # Aplicamos la regla de negocio
+    _sincronizar_claves_con_sintomas(enfermedad)
+    
     await enfermedad.insert()
-    await kb_engine.cargar_conocimiento() # Recargar IA
-    return {"msg": f"Enfermedad '{enfermedad.nombre}' creada."}
+    await kb_engine.cargar_conocimiento() 
+    return {"msg": f"Enfermedad '{enfermedad.nombre}' creada y síntomas sincronizados."}
 
 #ELIMINAR ENFERMEDAD
 @router.delete("/enfermedad")
@@ -31,14 +34,13 @@ class EdicionEnfermedadInput(BaseModel):
     nuevo_nombre: str | None = None
     nueva_urgencia: str | None = None
     nueva_recomendacion: str | None = None
-    nuevos_sintomas_clave: list[str] | None = None
+    nuevos_sintomas_clave: list[str] | None = None  
 
 @router.put("/enfermedad")
 async def editar_enfermedad(data: EdicionEnfermedadInput):
     enf = await EnfermedadDocument.find_one(EnfermedadDocument.nombre == data.nombre_actual)
     if not enf: raise HTTPException(404, "Enfermedad no encontrada.")
 
-    # Si cambia el nombre, verificamos que no exista ya el nuevo
     if data.nuevo_nombre and data.nuevo_nombre != data.nombre_actual:
         if await EnfermedadDocument.find_one(EnfermedadDocument.nombre == data.nuevo_nombre):
              raise HTTPException(400, "Ya existe otra enfermedad con ese nuevo nombre.")
@@ -46,19 +48,19 @@ async def editar_enfermedad(data: EdicionEnfermedadInput):
 
     if data.nueva_urgencia: enf.nivel_urgencia = data.nueva_urgencia
     if data.nueva_recomendacion: enf.recomendacion_publica = data.nueva_recomendacion
-    if data.nuevos_sintomas_clave is not None: 
+    
+    # Si editamos los síntomas clave
+    if data.nuevos_sintomas_clave is not None:
         enf.sintomas_clave = data.nuevos_sintomas_clave
+        _sincronizar_claves_con_sintomas(enf)
+
     await enf.save()
     await kb_engine.cargar_conocimiento()
-    return {"msg": "Datos de la enfermedad actualizados."}
-
-#  GESTIÓN DE SÍNTOMAS (CRUD)
+    return {"msg": "Datos de la enfermedad actualizados y sincronizados."}
 
 class GestionSintomaInput(BaseModel):
     enfermedad_nombre: str
-    sintoma_objetivo: str # El nombre del síntoma a buscar
-
-# AGREGAR NUEVO SÍNTOMA (Un bloque entero nuevo)
+    sintoma_objetivo: str 
 class NuevoSintomaFull(BaseModel):
     enfermedad_nombre: str
     nuevo_sintoma: Sintoma 
@@ -120,7 +122,15 @@ async def editar_sintoma(data: EdicionSintomaInput):
     await enf.save()
     await kb_engine.cargar_conocimiento()
     return {"msg": "Síntoma actualizado correctamente."}
-
+def _sincronizar_claves_con_sintomas(enfermedad: EnfermedadDocument):
+    nombres_existentes = {s.nombre for s in enfermedad.sintomatologia}
+    
+    for clave in enfermedad.sintomas_clave:
+        if clave not in nombres_existentes:
+            # ¡Aquí está la magia! Lo crea solo.
+            nuevo_sintoma = Sintoma(nombre=clave, otros_nombres=[])
+            enfermedad.sintomatologia.append(nuevo_sintoma)
+            nombres_existentes.add(clave)
 @router.post("/seed")
 async def seed():
     return {"msg": "Usa la función de Crear Enfermedad para insertar datos manuales o carga los JSON en Mongo Atlas."}
