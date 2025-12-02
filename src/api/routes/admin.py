@@ -122,3 +122,8 @@ async def editar_sintoma(data: EdicionSintomaInput):
 @router.post("/seed")
 async def seed():
     return {"msg": "Usa la función de Crear Enfermedad para insertar datos manuales o carga los JSON en Mongo Atlas."}
+
+@router.get("/catalogo-sintomas")
+async def obtener_catalogo_sintomas():
+    enfermedades = await EnfermedadDocument.find_all().to_list()
+    return enfermedades
