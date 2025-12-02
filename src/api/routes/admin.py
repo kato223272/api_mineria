@@ -31,6 +31,7 @@ class EdicionEnfermedadInput(BaseModel):
     nuevo_nombre: str | None = None
     nueva_urgencia: str | None = None
     nueva_recomendacion: str | None = None
+    nuevos_sintomas_clave: list[str] | None = None
 
 @router.put("/enfermedad")
 async def editar_enfermedad(data: EdicionEnfermedadInput):
